@@ -1,0 +1,7 @@
+task,accuracy
+sst2,0.0
+squad2,0.0
+iwslt2017,0.0
+race,0.0
+medmcqa,0.0
+avg,0.0

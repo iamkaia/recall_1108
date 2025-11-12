@@ -1,0 +1,21 @@
+# === checkpoints / 模型 / 中間產物 ===
+checkpoints_*/
+fused_recall_*/
+Llama-2-7b-chat-hf/
+datasets/
+
+# === 評測輸出 ===
+results_eval*/
+results_eval_qwen/
+recall_results_*.txt
+*.log
+
+# === 其他常見暫存 ===
+logs/
+__pycache__/
+.ipynb_checkpoints/
+*.bin
+*.pt
+*.pth
+*.ckpt
+.DS_Store
