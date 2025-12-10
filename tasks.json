@@ -1,0 +1,14 @@
+{
+    "base_model": "meta-llama/Llama-2-7b-chat-hf",
+    "adapter_root": "/home/kaia/LLaMA-Factory/saves/llama2-7b-chat-hf/lora",
+    "datasets": {
+      "sst2": "/home/kaia/recall_1108/datasets_llama/sst2/train.jsonl",
+      "squad2": "/home/kaia/recall_1108/datasets_llama/squad2/train.jsonl",
+      "medmcqa": "/home/kaia/recall_1108/datasets_llama/medmcqa/train.jsonl",
+      "iwslt": "/home/kaia/recall_1108/datasets_llama/iwslt2017/train.jsonl",
+      "race": "/home/kaia/recall_1108/datasets_llama/race/train.jsonl"
+    },
+    "num_typical_samples": 50,
+    "output_dir": "/home/kaia/recall_1108/recall_fused"
+  }
+  

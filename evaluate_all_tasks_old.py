@@ -33,9 +33,6 @@ def parse_args():
         nargs="*",
         default=["sst2", "squad2", "iwslt2017", "race", "medmcqa"],
     )
-
-    ap.add_argument("--sample_map", type=str, default="")
-
     return ap.parse_args()
 
 
@@ -85,8 +82,45 @@ def parse_first_valid_token(task: str, text: str):
             return m2.group(1)
 
         return None
+
+        '''
+        # 抓 Answer: positive / Answer: negative
+        # m = re.search(r"answer\s*[:：]?\s*(positive|negative)", t, re.IGNORECASE)
+        # if m:
+        #    return m.group(1).lower()
+        
+        # fallback：抓第一個 emotion（模型可能亂講解釋）
+        # m = re.search(r"(positive|negative)", t.lower())
+        # return m.group(1) if m else None
+        
+        # 1) 找 Output: 後的全部內容
+        m = re.search(r"Output\s*[:：]?\s*(.*)", t, re.IGNORECASE | re.DOTALL)
+        if m:
+            after = m.group(1).strip()
+
+            # 2) 取 Output 後第一行非空字串
+            first_line = next((line.strip() for line in after.splitlines() if line.strip()), "")
+            
+            # 3) 看第一行是否包含 positive/negative
+            m2 = re.search(r"(positive|negative)", first_line.lower())
+            if m2:
+                return m2.group(1)
+
+        # fallback - 找全文第一個 positive/negative
+        m3 = re.search(r"(positive|negative)", t.lower())
+        return m3.group(1) if m3 else None
+        '''
     
     elif task in ("race", "medmcqa"):
+        '''
+        # 抓 Answer: A/B/C/D（不分大小寫）
+        m = re.search(r"[Aa]nswer\s*[:：]?\s*([A-Da-d])", t)
+        if not m:
+            m = re.search(r"\b([A-Da-d])\b", t)
+        if m:
+            return m.group(1).upper()        # <<< CHANGED：回傳字母 A/B/C/D
+        return None
+        '''
 
         # 1. 找最後一個 "Answer:" 或 "Output:"
         last_idx = -1
@@ -202,6 +236,47 @@ def normalize_answer(s):
 def simple_em(pred, gold):
     return int(normalize_answer(pred) == normalize_answer(gold))
 
+'''
+def simple_bleu(preds, refs):
+    try:
+        import sacrebleu
+    except Exception:
+        return None  # 沒裝就回 None
+
+    # 清掉空白，避免全空造成錯誤
+    preds = [(p or "").strip() for p in preds]
+    refs  = [(r or "").strip() for r in refs]
+    # 若全部都空，沒意義，回 None
+    if not preds or not refs or all(x == "" for x in preds) or all(x == "" for x in refs):
+        return None
+    # sacrebleu 要求 refs 是 list-of-lists
+    return sacrebleu.corpus_bleu(preds, [refs]).score
+
+
+def normalize_ws(s):
+    return " ".join((s or "").strip().split())
+
+def normalize_squad(s):
+    """Official SQuAD normalization."""
+    for prefix in ["answer:", "答案：", "解答："]:
+        if s.startswith(prefix):
+            s = s[len(prefix):].strip()
+
+    def remove_articles(text):
+        return re.sub(r"\b(a|an|the)\b", " ", text)
+
+    def white_space_fix(text):
+        return " ".join(text.split())
+
+    def remove_punc(text):
+        return "".join(ch for ch in text if ch not in string.punctuation)
+
+    def lower(text):
+        return text.lower()
+
+    return white_space_fix(remove_articles(remove_punc(lower(s or ""))))
+'''
+
 # ======= IWSLT2017 專用：接近論文的 EM =======
 def normalize_iwslt(s):
     # do NOT remove punctuation or articles (not valid for FR)
@@ -212,7 +287,6 @@ def simple_em_iwslt(pred: str, gold: str) -> int:
     """IWSLT2017 的 EM：經過 normalize_iwslt 後是否完全相等"""
     return int(normalize_iwslt(pred) == normalize_iwslt(gold))
 
-'''
 # ======= 各任務的 score_* function：都回傳 [0,1] =======
 def score_sst2(preds, golds):
     valid_pairs = [(p, g) for p, g in zip(preds, golds)
@@ -220,20 +294,6 @@ def score_sst2(preds, golds):
     total = len(valid_pairs)
     correct = 0
     for p, g in valid_pairs:
-        pp = (p or "").strip().lower()
-        gg = (g or "").strip().lower()
-        if pp == gg:
-            correct += 1
-    return correct / max(1, total)
-'''
-
-def score_sst2(preds, golds):
-    total = 0
-    correct = 0
-    for p, g in zip(preds, golds):
-        if g is None:
-            continue          # test set 沒 label 的就跳過（一般不會有）
-        total += 1
         pp = (p or "").strip().lower()
         gg = (g or "").strip().lower()
         if pp == gg:
@@ -297,19 +357,12 @@ def main():
         device_map="auto",
     )
 
-    '''
     # ✅ 關掉 chat 模式，讓它當純 decoder LM 用
     if hasattr(tokenizer, "chat_template"):
         tokenizer.chat_template = None
-    '''
+
 
     model.eval()
-
-    sample_dict = {}
-    if args.sample_map:
-        for pair in args.sample_map.split(","):
-            t, n = pair.split(":")
-            sample_dict[t.strip()] = int(n.strip())
 
     summary = {}
 
@@ -326,18 +379,11 @@ def main():
         if not os.path.exists(test_path):
             print(f"[WARN] {test_path} not found, skip.")
             continue
-        
+
         data = load_jsonl(test_path)
-        '''
         if args.max_examples > 0:
             data = data[: args.max_examples]
-        '''
 
-        # 📌 NEW — apply task-specific sample size
-        sample_size = sample_dict.get(task, args.max_examples)
-        if sample_size > 0:
-            data = data[: sample_size]
-        
         print(f"\n=== Evaluating {task} ({len(data)} samples) ===")
 
         dataloader = DataLoader(data, batch_size=args.batch_size, shuffle=False, collate_fn=collate_fn)
@@ -347,20 +393,22 @@ def main():
 
         for batch in tqdm(dataloader, desc=f"{task} generation"):
             #batch_inputs = [ex["input"] for ex in batch]
-            '''
             batch_inputs = [
                 f"Instruction :{ex['input']}\nOutput:"
                 for ex in batch
             ]
-            '''
-            batch_inputs = [f"<|user|>\n{ex['input']}\n</s>\n<|assistant|>" for ex in batch]
             batch_golds = [get_target(task, ex) for ex in batch]
 
             src_len = args.max_src_len
             if task in ("sst2", "race", "medmcqa"):
-                max_new_tokens= 64
+                max_new_tokens= 8
             else:
-                max_new_tokens= 128
+                max_new_tokens= 64
+
+            '''
+            if task == "race":
+                src_len = max(src_len, 1024)   # 只對 RACE 放大到 1024
+            '''
 
             enc = tokenizer(
                 batch_inputs,
@@ -380,6 +428,35 @@ def main():
                     "pad_token_id": tokenizer.eos_token_id,
                     "return_dict_in_generate": False,
                 }
+                
+                '''
+                gen_kwargs = {
+                    "max_new_tokens": args.max_new_tokens,
+                    "do_sample": True,
+                    "temperature": 0.2,        # 更低、更接近 greedy，但不會亂碼
+                    "top_p": 0.9,
+                    "repetition_penalty": 1.1,
+                }
+                '''
+                '''
+                gen_kwargs = {
+                    "max_new_tokens":args.max_new_tokens,
+                    "do_sample":True,                  # <<< 改 True
+                    "temperature":0.7,                 # <<< 避免亂碼 token
+                    "top_p":0.9,
+                    "repetition_penalty":1.2,
+                }
+                '''
+                '''
+                # 翻譯任務用 beam search，其餘 greedy 即可
+                if task == "iwslt2017":
+                    gen_kwargs.update({
+                        "num_beams": 2,
+                        "length_penalty": 1.0,
+                        "early_stopping": True,
+                        "no_repeat_ngram_size": 3,
+                    })
+                '''
 
                 out = model.generate(**enc, **gen_kwargs)
 
@@ -421,6 +498,43 @@ def main():
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
         print(f"✅ Saved predictions → {out_path}")
         
+        '''
+        # compute score
+        score_val = None
+
+        if task in ("sst2", "race", "medmcqa"):
+            # 只保留 pred/gold 都非 None 的 pair
+            valid_pairs = [(p, g) for p, g in zip(preds, golds) if p is not None and g is not None]
+            correct = sum(int(p == g) for p, g in valid_pairs)
+            total = len(valid_pairs)
+            acc = correct / max(1, total)
+            print(f"   ↳ Accuracy: {acc:.3f}")
+            score_val = acc
+
+        elif task == "squad2":
+            valid_pairs = [(p, g) for p, g in zip(preds, golds)
+                           if p is not None and g is not None and g != ""]
+
+            for i, (p, g) in enumerate(valid_pairs[:5]):
+                print(f"[DEBUG squad2] EM={int(simple_em(p, g))}, pred={p}, gold={g}")
+
+            ems = [simple_em(p, g) for p, g in valid_pairs]
+            em = sum(ems) / max(1, len(ems))
+            print(f"   ↳ EM: {em:.3f}")
+            score_val = em
+
+        elif task == "iwslt2017":
+            preds_ = [p or "" for p in preds]
+            refs_  = [g or "" for g in golds]
+            bleu = simple_bleu(preds_, refs_)
+            if isinstance(bleu, (int, float)):
+                print(f"   ↳ BLEU: {bleu:.2f}")
+                score_val = bleu
+            else:
+                print("   ↳ BLEU: skipped (install `sacrebleu` or check empty refs/preds)")
+
+        summary[task] = score_val
+        '''
         # compute score
         score_val = None
 
@@ -453,6 +567,32 @@ def main():
 
         
         elif task == "iwslt2017":
+            '''
+            valid_pairs = [(p, g) for p, g in zip(preds, golds)
+                           if p is not None and g is not None]
+
+            # debug 看前幾筆 EM
+            for i, (p, g) in enumerate(valid_pairs[:5]):
+                print(f"[DEBUG iwslt2017] EM={int(simple_em_iwslt(p, g))}, pred={p}, gold={g}")
+
+            em = score_iwslt(preds, golds)
+            #print(f"   ↳ EM (iwslt2017): {em:.3f}")
+            #score_val = em
+            # ---- Calculate EM ----
+            em = score_iwslt(preds, golds)
+
+            # ---- Calculate BLEU ----
+            preds_clean = [p.strip() for p, _ in valid_pairs]
+            gold_clean = [g.strip() for _, g in valid_pairs]
+
+            bleu = corpus_bleu(preds_clean, [gold_clean]).score  # sacrebleu expects list of references
+
+            print(f"   ↳ EM (iwslt2017): {em:.3f}")
+            print(f"   ↳ BLEU (iwslt2017): {bleu:.3f}")
+
+            # 用 BLEU or EM 作 score? If want both:
+            score_val = {"em": em, "bleu": bleu}
+            '''
             valid_pairs = [(p, g) for p, g in zip(preds, golds)
                         if p is not None and g is not None]
 

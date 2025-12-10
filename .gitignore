@@ -3,6 +3,12 @@ checkpoints_*/
 fused_recall_*/
 Llama-2-7b-chat-hf/
 datasets/
+old_checkpoints/
+old_logs/
+old_results/
+old_v2_datasets/
+unsloth_compiled_cache/
+datasets_llama/
 
 # === 評測輸出 ===
 results_eval*/

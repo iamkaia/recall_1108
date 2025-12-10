@@ -172,7 +172,7 @@ def main():
     # 3) base model（不載 LoRA，稍後動態套）
     base = AutoModelForCausalLM.from_pretrained(
         args.base_model,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,
         device_map="auto",
     )
     base.eval()

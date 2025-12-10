@@ -14,15 +14,15 @@ set -euo pipefail
 #OUT_DIR="checkpoints_recall"
 #FUSED_DIR="fused_recall_qwen2"
 #BASE_MODEL="./Llama-2-7b-chat-hf"
-BASE_MODEL="unsloth/llama-2-7b-chat-bnb-4bit"
-FUSED_DIR="fused_recall_llama2_2000_1118"
-OUT_DIR="checkpoints_recall_llama_2000_1118"
+BASE_MODEL="unsloth/llama-2-7b-chat"
+FUSED_DIR="fused_recall_1119_test"
+OUT_DIR="checkpoints_recall_1119_test"
 DATA_ROOT="./datasets"                  # 你的 jsonl 所在根目錄
-RESULTS_DIR="results_eval_subset500_train2000_1118"
+RESULTS_DIR="results_eval_1119_test"
 LOG_DIR="logs"
 
 # 控制每個 task 訓練只抽部分資料（0=全量）
-N_SAMPLES="${N_SAMPLES:-2000}"           # 例：export N_SAMPLES=200
+N_SAMPLES="${N_SAMPLES:-200}"           # 例：export N_SAMPLES=200
 
 # 生成/評估長度 (保守避免 OOM)
 MAX_LEN_TRAIN=1024
@@ -147,7 +147,7 @@ python evaluate_all_tasks.py \
   --base_model "$BASE_MODEL" \
   --data_root "$DATA_ROOT" \
   --results_dir "$RESULTS_DIR" \
-  --max_examples 500 \
+  --max_examples 100 \
   --max_src_len "$MAX_LEN_EVAL" \
   --max_new_tokens "$MAX_NEW_TOKENS" 2>&1 | tee -a "$LOG_FILE"
 
